@@ -306,7 +306,8 @@ let audioQueue = [];
 let isPlayingAudio = false;
 let currentAudio = null;
 
-const WS_URL = `ws://${location.host}/ws/session`;
+const WS_PROTOCOL = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const WS_URL = `${WS_PROTOCOL}//${location.host}/ws/session`;
 
 // ─── UI refs ────────────────────────────────────────────────────────────────
 const orb       = document.getElementById('orb');
