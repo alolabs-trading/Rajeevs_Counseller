@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rajeev's Voice Counsellor</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a1e;
+      color: #e2e2e2;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      background: #242428;
+      border-radius: 16px;
+      width: 680px;
+      max-width: 96vw;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 24px 28px 16px;
+    }
+
+    .header-title { font-size: 18px; font-weight: 500; color: #f0f0f0; }
+    .header-sub   { font-size: 13px; color: #888; margin-top: 4px; }
+
+    .header-meta { text-align: right; }
+    .meta-row    { display: flex; gap: 20px; }
+
+    .meta-label { font-size: 10px; letter-spacing: 0.08em; color: #666; text-transform: uppercase; }
+    .meta-value { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: #e0e0e0; margin-top: 2px; }
+    .meta-value.status-listening { color: #5bc47a; }
+    .meta-value.status-thinking  { color: #f0a742; }
+    .meta-value.status-speaking  { color: #6ab0f5; }
+    .meta-value.status-transcribing { color: #f0a742; }
+    .meta-value.status-error     { color: #e25b5b; }
+
+    /* ── Visualizer area ── */
+    .viz-area {
+      background: #18181c;
+      margin: 0 16px;
+      border-radius: 10px;
+      height: 340px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Orb */
+    .orb-wrapper {
+      position: relative;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .orb-glow {
+      position: absolute;
+      inset: -30px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(150, 190, 240, 0.18) 0%, transparent 70%);
+      transition: all 0.4s ease;
+    }
+
+    .orb {
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      background: #b8d0ee;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      transition: transform 0.15s ease, background 0.3s;
+    }
+
+    .orb:hover { transform: scale(1.04); }
+    .orb:active { transform: scale(0.96); }
+
+    .orb.listening {
+      background: #6ab0f5;
+      animation: pulse-listen 1.2s ease-in-out infinite;
+    }
+    .orb.recording {
+      background: #e25b5b;
+      animation: pulse-record 0.8s ease-in-out infinite;
+    }
+    .orb.speaking {
+      background: #88c5ff;
+      animation: pulse-speak 0.6s ease-in-out infinite;
+    }
+    .orb.thinking {
+      background: #f0a742;
+      animation: pulse-think 1.8s ease-in-out infinite;
+    }
+
+    .orb-glow.listening { background: radial-gradient(circle, rgba(106, 176, 245, 0.25) 0%, transparent 70%); }
+    .orb-glow.recording { background: radial-gradient(circle, rgba(226, 91, 91, 0.30) 0%, transparent 70%); }
+    .orb-glow.speaking  { background: radial-gradient(circle, rgba(136, 197, 255, 0.30) 0%, transparent 70%); }
+    .orb-glow.thinking  { background: radial-gradient(circle, rgba(240, 167, 66, 0.22) 0%, transparent 70%); }
+
+    @keyframes pulse-listen {
+      0%, 100% { transform: scale(1); }
+      50%       { transform: scale(1.06); }
+    }
+    @keyframes pulse-record {
+      0%, 100% { transform: scale(1.02); }
+      50%       { transform: scale(1.10); }
+    }
+    @keyframes pulse-speak {
+      0%, 100% { transform: scale(1.04); }
+      50%       { transform: scale(0.97); }
+    }
+    @keyframes pulse-think {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.75; }
+    }
+
+    .mic-icon {
+      width: 36px;
+      height: 36px;
+      color: #1a2a3a;
+    }
+
+    /* Hint text under orb */
+    .orb-hint {
+      position: absolute;
+      bottom: 32px;
+      font-size: 13px;
+      color: #666;
+      text-align: center;
+      transition: opacity 0.3s;
+    }
+
+    /* Waveform bars */
+    .waveform {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 40px;
+      position: absolute;
+      bottom: 70px;
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+    .waveform.active { opacity: 1; }
+    .waveform .bar {
+      width: 3px;
+      background: #6ab0f5;
+      border-radius: 2px;
+      animation: wave 0.9s ease-in-out infinite;
+    }
+    .waveform .bar:nth-child(1) { animation-delay: 0.0s; }
+    .waveform .bar:nth-child(2) { animation-delay: 0.1s; }
+    .waveform .bar:nth-child(3) { animation-delay: 0.2s; }
+    .waveform .bar:nth-child(4) { animation-delay: 0.3s; }
+    .waveform .bar:nth-child(5) { animation-delay: 0.4s; }
+    .waveform .bar:nth-child(6) { animation-delay: 0.3s; }
+    .waveform .bar:nth-child(7) { animation-delay: 0.2s; }
+    .waveform .bar:nth-child(8) { animation-delay: 0.1s; }
+    .waveform .bar:nth-child(9) { animation-delay: 0.0s; }
+
+    @keyframes wave {
+      0%, 100% { height: 6px; }
+      50%       { height: 28px; }
+    }
+
+    /* Transcript overlay */
+    .transcript-area {
+      position: absolute;
+      top: 16px;
+      left: 20px;
+      right: 20px;
+      font-size: 13px;
+      color: #999;
+      line-height: 1.5;
+      max-height: 120px;
+      overflow: hidden;
+    }
+    .transcript-user     { color: #aaa; }
+    .transcript-ai       { color: #b8d0ee; margin-top: 6px; }
+    .transcript-label    { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #555; margin-bottom: 2px; }
+
+    /* ── Bottom buttons ── */
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      padding: 16px 16px 20px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      background: #2e2e34;
+      color: #ccc;
+    }
+    .btn:hover   { opacity: 0.85; }
+    .btn:active  { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-start { background: #2e3a4a; color: #a8caee; }
+    .btn-end   { background: #3a2e2e; color: #e4a0a0; }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div class="header-title">Rajeev's Voice Counsellor</div>
+      <div class="header-sub" id="hint-text">Tap microphone to start</div>
+    </div>
+    <div class="header-meta">
+      <div class="meta-row">
+        <div>
+          <div class="meta-label">Status</div>
+          <div class="meta-value" id="status-display">IDLE</div>
+        </div>
+        <div>
+          <div class="meta-label">Session time</div>
+          <div class="meta-value" id="session-timer">0s</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Visualizer -->
+  <div class="viz-area">
+
+    <!-- Last exchange transcript -->
+    <div class="transcript-area" id="transcript-area" style="display:none">
+      <div>
+        <div class="transcript-label">You</div>
+        <div class="transcript-user" id="tx-user"></div>
+      </div>
+      <div>
+        <div class="transcript-label" style="margin-top:10px">Aria</div>
+        <div class="transcript-ai" id="tx-ai"></div>
+      </div>
+    </div>
+
+    <!-- Orb -->
+    <div class="orb-wrapper" id="orb-wrapper">
+      <div class="orb-glow" id="orb-glow"></div>
+      <div class="orb" id="orb">
+        <svg class="mic-icon" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3z"/>
+          <path d="M17 11a1 1 0 10-2 0 3 3 0 01-6 0 1 1 0 10-2 0 5 5 0 0010 0z"/>
+          <path d="M12 18v3M9 21h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Waveform -->
+    <div class="waveform" id="waveform">
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    </div>
+
+    <div class="orb-hint" id="orb-hint">Hold to speak · release to send</div>
+  </div>
+
+  <!-- Buttons -->
+  <div class="btn-row">
+    <button class="btn btn-start" id="btn-start" onclick="startSession()">Start Session</button>
+    <button class="btn btn-end"   id="btn-end"   onclick="endSession()" disabled>End Session</button>
+  </div>
+</div>
+
+<script>
+// ─── State ──────────────────────────────────────────────────────────────────
+let ws = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let sessionActive = false;
+let sessionStartTime = null;
+let timerInterval = null;
+let isRecording = false;
+let currentState = 'idle';
+
+// Audio queue — plays sentence chunks sequentially
+let audioQueue = [];
+let isPlayingAudio = false;
+let currentAudio = null;
+
+const WS_URL = `ws://${location.host}/ws/session`;
+
+// ─── UI refs ────────────────────────────────────────────────────────────────
+const orb       = document.getElementById('orb');
+const orbGlow   = document.getElementById('orb-glow');
+const waveform  = document.getElementById('waveform');
+const statusEl  = document.getElementById('status-display');
+const hintEl    = document.getElementById('hint-text');
+const orbHint   = document.getElementById('orb-hint');
+const txArea    = document.getElementById('transcript-area');
+const txUser    = document.getElementById('tx-user');
+const txAi      = document.getElementById('tx-ai');
+const btnStart  = document.getElementById('btn-start');
+const btnEnd    = document.getElementById('btn-end');
+const timerEl   = document.getElementById('session-timer');
+
+const STATE_LABELS = {
+  idle:          'IDLE',
+  listening:     'LISTENING',
+  transcribing:  'TRANSCRIBING',
+  thinking:      'THINKING',
+  speaking:      'SPEAKING',
+  error:         'ERROR',
+};
+
+const STATE_HINTS = {
+  idle:          'Tap microphone to start',
+  listening:     'Hold orb to speak',
+  transcribing:  'Processing your voice...',
+  thinking:      'Aria is thinking...',
+  speaking:      'Aria is speaking...',
+  error:         'Something went wrong',
+};
+
+function setState(state) {
+  currentState = state;
+  statusEl.className = `meta-value status-${state}`;
+  statusEl.textContent = STATE_LABELS[state] || state.toUpperCase();
+  hintEl.textContent = STATE_HINTS[state] || '';
+
+  // Reset orb classes
+  orb.className = 'orb';
+  orbGlow.className = 'orb-glow';
+  waveform.classList.remove('active');
+
+  if (state === 'listening') {
+    orb.classList.add('listening');
+    orbGlow.classList.add('listening');
+  } else if (state === 'speaking') {
+    orb.classList.add('speaking');
+    orbGlow.classList.add('speaking');
+  } else if (state === 'thinking' || state === 'transcribing') {
+    orb.classList.add('thinking');
+    orbGlow.classList.add('thinking');
+  }
+}
+
+// ─── Audio queue (sentence-by-sentence playback) ────────────────────────────
+
+function enqueueAudio(audioB64) {
+  // Decode base64 to blob URL
+  const byteCharacters = atob(audioB64);
+  const byteArray = new Uint8Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteArray[i] = byteCharacters.charCodeAt(i);
+  }
+  const blob = new Blob([byteArray], { type: 'audio/mpeg' });
+  const url = URL.createObjectURL(blob);
+  audioQueue.push(url);
+
+  // Start playing if not already
+  if (!isPlayingAudio) playNextInQueue();
+}
+
+function playNextInQueue() {
+  if (audioQueue.length === 0) {
+    isPlayingAudio = false;
+    currentAudio = null;
+    // All sentences played — back to listening
+    if (sessionActive && currentState === 'speaking') {
+      setState('listening');
+    }
+    return;
+  }
+
+  isPlayingAudio = true;
+  const url = audioQueue.shift();
+  currentAudio = new Audio(url);
+
+  currentAudio.onended = () => {
+    URL.revokeObjectURL(url);
+    currentAudio = null;
+    playNextInQueue();
+  };
+
+  currentAudio.onerror = () => {
+    URL.revokeObjectURL(url);
+    currentAudio = null;
+    playNextInQueue();
+  };
+
+  currentAudio.play().catch((err) => {
+    console.error('Audio play error:', err);
+    playNextInQueue();
+  });
+}
+
+function stopAllAudio() {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
+  // Clear the queue and revoke any pending URLs
+  audioQueue.forEach(url => URL.revokeObjectURL(url));
+  audioQueue = [];
+  isPlayingAudio = false;
+}
+
+// ─── Session timer ────────────────────────────────────────────────────────────
+function startTimer() {
+  sessionStartTime = Date.now();
+  timerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    timerEl.textContent = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+  timerEl.textContent = '0s';
+}
+
+// ─── WebSocket ────────────────────────────────────────────────────────────────
+function connectWebSocket() {
+  return new Promise((resolve, reject) => {
+    ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+      console.log('WS connected');
+      resolve();
+    };
+
+    ws.onerror = (e) => {
+      console.error('WS error', e);
+      reject(new Error('WebSocket connection failed'));
+    };
+
+    ws.onclose = () => {
+      console.log('WS closed');
+      if (sessionActive) handleDisconnect();
+    };
+
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      handleServerMessage(msg);
+    };
+  });
+}
+
+function handleServerMessage(msg) {
+  switch (msg.type) {
+    case 'status':
+      // Don't override speaking state from server if we're still playing audio
+      if (msg.state === 'listening' && isPlayingAudio) return;
+      setState(msg.state);
+      break;
+
+    case 'transcript':
+      txUser.textContent = msg.text;
+      txAi.textContent = '';
+      txArea.style.display = 'block';
+      break;
+
+    case 'sentence_text':
+      // Append each sentence to the AI transcript display
+      if (msg.index === 0) {
+        txAi.textContent = msg.text;
+      } else {
+        txAi.textContent += ' ' + msg.text;
+      }
+      break;
+
+    case 'sentence_audio':
+      enqueueAudio(msg.audio);
+      break;
+
+    case 'response_done':
+      // Full text already displayed via sentence_text events
+      break;
+
+    case 'error':
+      console.error('Server error:', msg.message);
+      setState('error');
+      hintEl.textContent = msg.message;
+      setTimeout(() => {
+        if (sessionActive) setState('listening');
+      }, 3000);
+      break;
+  }
+}
+
+function handleDisconnect() {
+  sessionActive = false;
+  stopAllAudio();
+  setState('idle');
+  stopTimer();
+  btnStart.disabled = false;
+  btnEnd.disabled = true;
+  hintEl.textContent = 'Disconnected — click Start to reconnect';
+}
+
+// ─── Recording ────────────────────────────────────────────────────────────────
+async function startRecording() {
+  if (isRecording || currentState !== 'listening') return;
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+
+    mediaRecorder.start(100);
+    isRecording = true;
+    waveform.classList.add('active');
+    orb.className = 'orb recording';
+    orbGlow.className = 'orb-glow recording';
+    orbHint.style.display = 'none';
+  } catch (err) {
+    console.error('Mic error:', err);
+    hintEl.textContent = 'Microphone access denied';
+  }
+}
+
+async function stopRecordingAndSend() {
+  if (!isRecording || !mediaRecorder) return;
+  isRecording = false;
+  waveform.classList.remove('active');
+  orbHint.style.display = '';
+
+  return new Promise((resolve) => {
+    mediaRecorder.onstop = async () => {
+      const stream = mediaRecorder.stream;
+      stream.getTracks().forEach(t => t.stop());
+
+      if (audioChunks.length === 0) { resolve(); return; }
+
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result.split(',')[1];
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'audio_chunk',
+            audio: base64,
+            mimetype: 'audio/webm',
+          }));
+        }
+        resolve();
+      };
+      reader.readAsDataURL(blob);
+    };
+
+    mediaRecorder.stop();
+  });
+}
+
+// ─── Orb interaction ────────────────────────────────────────────────────────
+const orbWrapper = document.getElementById('orb-wrapper');
+
+// Hold to talk
+orbWrapper.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  if (sessionActive && currentState === 'listening') {
+    startRecording();
+  } else if (currentState === 'speaking') {
+    // Tap to interrupt
+    stopAllAudio();
+    if (ws) ws.send(JSON.stringify({ type: 'cancel' }));
+    setState('listening');
+  }
+});
+
+orbWrapper.addEventListener('mouseup', () => {
+  if (isRecording) stopRecordingAndSend();
+});
+
+orbWrapper.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (sessionActive && currentState === 'listening') {
+    startRecording();
+  } else if (currentState === 'speaking') {
+    stopAllAudio();
+    if (ws) ws.send(JSON.stringify({ type: 'cancel' }));
+    setState('listening');
+  }
+}, { passive: false });
+
+orbWrapper.addEventListener('touchend', () => {
+  if (isRecording) stopRecordingAndSend();
+});
+
+// ─── Session control ──────────────────────────────────────────────────────────
+async function startSession() {
+  btnStart.disabled = true;
+
+  try {
+    await connectWebSocket();
+    sessionActive = true;
+    startTimer();
+    setState('listening');
+    txArea.style.display = 'none';
+    btnEnd.disabled = false;
+    orbHint.textContent = 'Hold orb to speak · release to send';
+  } catch (err) {
+    hintEl.textContent = 'Could not connect to backend. Is it running?';
+    btnStart.disabled = false;
+  }
+}
+
+function endSession() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'end_session' }));
+    ws.close();
+  }
+  stopAllAudio();
+  sessionActive = false;
+  setState('idle');
+  stopTimer();
+  btnStart.disabled = false;
+  btnEnd.disabled = true;
+  txArea.style.display = 'none';
+}
+</script>
+</body>
+</html>
