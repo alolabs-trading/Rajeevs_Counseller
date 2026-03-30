@@ -1,11 +1,11 @@
 """
-pipeline.py — Sentence-streaming audio pipeline for Zen Counselor V1.
+pipeline.py — Sentence-streaming audio pipeline for Rajeev's Voice Counsellor V1.
 
 Flow:
   audio bytes (webm/ogg)
     → Deepgram STT  (nova-2, ~300ms)
     → Claude Sonnet (streaming, sentence-by-sentence)
-    → ElevenLabs TTS (per sentence, ~200ms each)
+    → Edge TTS      (per sentence, free, no API key needed)
 
 The key optimization: Claude streams tokens, we detect sentence boundaries,
 and fire TTS for each sentence immediately. The client starts hearing Aria
@@ -18,16 +18,14 @@ import asyncio
 from typing import AsyncGenerator
 
 import anthropic
+import edge_tts
 from deepgram import DeepgramClient
-from elevenlabs.client import ElevenLabs
-from elevenlabs import VoiceSettings
 from persona import COUNSELOR_SYSTEM_PROMPT
 
 
 # ─── Singleton clients (created once, reused) ───────────────────────────────
 
 _deepgram: DeepgramClient | None = None
-_elevenlabs: ElevenLabs | None = None
 _anthropic: anthropic.AsyncAnthropic | None = None
 
 
@@ -36,13 +34,6 @@ def _get_deepgram() -> DeepgramClient:
     if _deepgram is None:
         _deepgram = DeepgramClient(api_key=os.environ["DEEPGRAM_API_KEY"])
     return _deepgram
-
-
-def _get_elevenlabs() -> ElevenLabs:
-    global _elevenlabs
-    if _elevenlabs is None:
-        _elevenlabs = ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"])
-    return _elevenlabs
 
 
 def _get_anthropic() -> anthropic.AsyncAnthropic:
@@ -57,7 +48,6 @@ def _get_anthropic() -> anthropic.AsyncAnthropic:
 async def transcribe_audio(audio_bytes: bytes, mimetype: str = "audio/webm") -> str:
     """
     Transcribe audio bytes to text using Deepgram nova-2.
-    Uses the v6 SDK REST API (listen.v1.media.transcribe_file).
     Returns empty string if no speech detected.
     """
     client = _get_deepgram()
@@ -83,10 +73,8 @@ async def transcribe_audio(audio_bytes: bytes, mimetype: str = "audio/webm") -> 
 
 # ─── Sentence boundary detection ────────────────────────────────────────────
 
-# Matches end of a sentence: . or ? or ! followed by whitespace or end-of-string.
-# Avoids splitting on things like "Dr." or "3.5" by requiring the sentence-ender
-# to follow a letter or closing quote.
-_SENTENCE_END = re.compile(r'(?<=[a-zA-Z\"\'\u2019\u201D])[.!?](?:\s|$)')
+# Matches sentence-ending punctuation for both English and Hindi (Devanagari purna viram)
+_SENTENCE_END = re.compile(r'[.!?\u0964](?:\s|$)')
 
 
 def _extract_sentences(buffer: str) -> tuple[list[str], str]:
@@ -99,7 +87,6 @@ def _extract_sentences(buffer: str) -> tuple[list[str], str]:
         match = _SENTENCE_END.search(buffer)
         if not match:
             break
-        # Split at the end of the matched punctuation
         end_pos = match.end()
         sentence = buffer[:end_pos].strip()
         if sentence:
@@ -117,7 +104,6 @@ async def stream_counselor_sentences(
 ) -> AsyncGenerator[str, None]:
     """
     Stream Claude's response and yield complete sentences as they form.
-    This lets us fire TTS per-sentence instead of waiting for the full response.
     """
     client = _get_anthropic()
 
@@ -139,36 +125,30 @@ async def stream_counselor_sentences(
             for sentence in sentences:
                 yield sentence
 
-    # Yield any remaining text as the final sentence
     remaining = buffer.strip()
     if remaining:
         yield remaining
 
 
-# ─── ElevenLabs TTS ──────────────────────────────────────────────────────────
+# ─── Edge TTS (free, no API key) ────────────────────────────────────────────
 
-VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"  # George — free-tier default, calm male voice
+# Hindi voices available in Edge TTS:
+#   hi-IN-MadhurNeural  — male, calm
+#   hi-IN-SwaraNeural   — female, warm
+EDGE_VOICE = "hi-IN-SwaraNeural"  # Female voice for Aria
 
 
 async def text_to_speech(text: str) -> bytes:
     """
-    Convert a sentence to MP3 audio using ElevenLabs.
-    Uses multilingual_v2 which is available on free tier.
-    Returns raw MP3 bytes.
+    Convert text to MP3 audio using Edge TTS (Microsoft).
+    Completely free, no API key needed. Supports Hindi natively.
     """
-    client = _get_elevenlabs()
-    loop = asyncio.get_running_loop()
-
-    def _convert():
-        audio_stream = client.text_to_speech.convert(
-            text=text,
-            voice_id=VOICE_ID,
-            model_id="eleven_multilingual_v2",
-            output_format="mp3_44100_128",
-        )
-        return b"".join(audio_stream)
-
-    return await loop.run_in_executor(None, _convert)
+    communicate = edge_tts.Communicate(text, EDGE_VOICE)
+    audio_data = b""
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_data += chunk["data"]
+    return audio_data
 
 
 # ─── Streaming pipeline ─────────────────────────────────────────────────────
@@ -188,14 +168,12 @@ async def process_turn_streaming(
 
     Raises ValueError if no speech detected.
     """
-    # Stage 1: STT
     transcript = await transcribe_audio(audio_bytes, mimetype)
     if not transcript:
         raise ValueError("No speech detected in audio")
 
     yield {"event": "transcript", "text": transcript}
 
-    # Stage 2+3: Stream sentences from Claude, TTS each one immediately
     full_response = ""
     sentence_index = 0
 
@@ -204,7 +182,6 @@ async def process_turn_streaming(
 
         yield {"event": "sentence_text", "text": sentence, "index": sentence_index}
 
-        # TTS this sentence immediately — don't wait for the rest
         audio = await text_to_speech(sentence)
         yield {"event": "sentence_audio", "audio": audio, "index": sentence_index}
 
