@@ -183,8 +183,15 @@ async def websocket_session(websocket: WebSocket):
 
                 except Exception as e:
                     print(f"Pipeline error: {e}")
-                    await session.send({"type": "error", "message": str(e)})
-                    await session.set_status("idle")
+                    err_str = str(e)
+                    if "overloaded" in err_str.lower():
+                        msg = "सध्या खूप रहदारी आहे, थोड्या वेळाने पुन्हा प्रयत्न करा."
+                    elif "credit" in err_str.lower() or "billing" in err_str.lower():
+                        msg = "API credit संपले आहेत."
+                    else:
+                        msg = "काहीतरी चुकलं. पुन्हा प्रयत्न करा."
+                    await session.send({"type": "error", "message": msg})
+                    await session.set_status("listening")
 
                 finally:
                     session.is_processing = False

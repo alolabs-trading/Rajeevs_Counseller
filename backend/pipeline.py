@@ -22,6 +22,8 @@ import edge_tts
 from deepgram import DeepgramClient
 from persona import COUNSELOR_SYSTEM_PROMPT
 
+_RETRY_DELAYS = [2, 5, 10]  # seconds between retries on overload
+
 
 # ─── Singleton clients (created once, reused) ───────────────────────────────
 
@@ -57,8 +59,8 @@ async def transcribe_audio(audio_bytes: bytes, mimetype: str = "audio/webm") -> 
         None,
         lambda: client.listen.v1.media.transcribe_file(
             request=audio_bytes,
-            model="nova-3",
-            language="mr",
+            model="nova-2",
+            language="hi",
             smart_format=True,
             punctuate=True,
         ),
@@ -104,6 +106,7 @@ async def stream_counselor_sentences(
 ) -> AsyncGenerator[str, None]:
     """
     Stream Claude's response and yield complete sentences as they form.
+    Retries up to 3 times on overloaded errors.
     """
     client = _get_anthropic()
 
@@ -111,31 +114,48 @@ async def stream_counselor_sentences(
         {"role": "user", "content": transcript},
     ]
 
-    buffer = ""
-    async with client.messages.stream(
-        model="claude-sonnet-4-6",
-        max_tokens=250,
-        system=COUNSELOR_SYSTEM_PROMPT,
-        messages=messages,
-        temperature=0.7,
-    ) as stream:
-        async for chunk in stream.text_stream:
-            buffer += chunk
-            sentences, buffer = _extract_sentences(buffer)
-            for sentence in sentences:
-                yield sentence
+    last_error = None
+    for attempt, delay in enumerate([0] + _RETRY_DELAYS):
+        if delay:
+            print(f"Claude overloaded, retrying in {delay}s (attempt {attempt+1})...")
+            await asyncio.sleep(delay)
+        try:
+            buffer = ""
+            async with client.messages.stream(
+                model="claude-sonnet-4-6",
+                max_tokens=250,
+                system=COUNSELOR_SYSTEM_PROMPT,
+                messages=messages,
+                temperature=0.7,
+            ) as stream:
+                async for chunk in stream.text_stream:
+                    buffer += chunk
+                    sentences, buffer = _extract_sentences(buffer)
+                    for sentence in sentences:
+                        yield sentence
 
-    remaining = buffer.strip()
-    if remaining:
-        yield remaining
+            remaining = buffer.strip()
+            if remaining:
+                yield remaining
+            return  # success
+
+        except anthropic.APIStatusError as e:
+            if e.status_code == 529 or "overloaded" in str(e).lower():
+                last_error = e
+                continue
+            raise
+        except Exception:
+            raise
+
+    raise last_error
 
 
 # ─── Edge TTS (free, no API key) ────────────────────────────────────────────
 
-# Marathi voices available in Edge TTS:
-#   mr-IN-AarohiNeural  — female, warm
-#   mr-IN-ManoharNeural  — male, calm
-EDGE_VOICE = "mr-IN-AarohiNeural"  # Female voice for Aria
+# Hindi voices available in Edge TTS:
+#   hi-IN-SwaraNeural   — female, warm
+#   hi-IN-MadhurNeural  — male, calm
+EDGE_VOICE = "hi-IN-SwaraNeural"  # Female voice for Saraswati
 
 
 async def text_to_speech(text: str) -> bytes:
