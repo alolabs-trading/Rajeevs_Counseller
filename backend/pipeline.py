@@ -22,7 +22,7 @@ import edge_tts
 from deepgram import DeepgramClient
 from persona import COUNSELOR_SYSTEM_PROMPT
 
-_RETRY_DELAYS = [2, 5, 10]  # seconds between retries on overload
+_RETRY_DELAYS = [1, 2, 3]  # seconds between retries on overload
 
 
 # ─── Singleton clients (created once, reused) ───────────────────────────────
@@ -127,6 +127,7 @@ async def stream_counselor_sentences(
                 system=COUNSELOR_SYSTEM_PROMPT,
                 messages=messages,
                 temperature=0.7,
+                timeout=10.0,
             ) as stream:
                 async for chunk in stream.text_stream:
                     buffer += chunk
