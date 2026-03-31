@@ -57,7 +57,7 @@ async def transcribe_audio(audio_bytes: bytes, mimetype: str = "audio/webm") -> 
         None,
         lambda: client.listen.v1.media.transcribe_file(
             request=audio_bytes,
-            model="nova-2",
+            model="nova-3",
             language="mr",
             smart_format=True,
             punctuate=True,
