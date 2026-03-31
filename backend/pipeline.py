@@ -58,7 +58,7 @@ async def transcribe_audio(audio_bytes: bytes, mimetype: str = "audio/webm") -> 
         lambda: client.listen.v1.media.transcribe_file(
             request=audio_bytes,
             model="nova-2",
-            language="hi",
+            language="mr",
             smart_format=True,
             punctuate=True,
         ),
@@ -132,10 +132,10 @@ async def stream_counselor_sentences(
 
 # ─── Edge TTS (free, no API key) ────────────────────────────────────────────
 
-# Hindi voices available in Edge TTS:
-#   hi-IN-MadhurNeural  — male, calm
-#   hi-IN-SwaraNeural   — female, warm
-EDGE_VOICE = "hi-IN-SwaraNeural"  # Female voice for Aria
+# Marathi voices available in Edge TTS:
+#   mr-IN-AarohiNeural  — female, warm
+#   mr-IN-ManoharNeural  — male, calm
+EDGE_VOICE = "mr-IN-AarohiNeural"  # Female voice for Aria
 
 
 async def text_to_speech(text: str) -> bytes:
