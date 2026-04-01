@@ -66,6 +66,7 @@ class CounselorSession:
         self.history: list[dict] = []
         self.is_processing = False
         self.cancelled = False
+        self.language: str = "hi"  # default Hindi
 
     async def send(self, data: dict):
         try:
@@ -98,6 +99,13 @@ async def websocket_session(websocket: WebSocket):
         while True:
             data = await websocket.receive_json()
             msg_type = data.get("type")
+
+            if msg_type == "set_language":
+                lang = data.get("language", "hi")
+                if lang in ("en", "hi", "mr"):
+                    session.language = lang
+                    session.history = []  # clear history on language change
+                continue
 
             if msg_type == "cancel":
                 session.cancelled = True
@@ -133,7 +141,7 @@ async def websocket_session(websocket: WebSocket):
                     first_audio_sent = False
 
                     async for event in process_turn_streaming(
-                        audio_bytes, session.history, mimetype
+                        audio_bytes, session.history, mimetype, session.language
                     ):
                         if session.cancelled:
                             await session.set_status("listening")

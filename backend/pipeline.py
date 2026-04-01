@@ -20,7 +20,7 @@ from typing import AsyncGenerator
 import anthropic
 import edge_tts
 from deepgram import DeepgramClient
-from persona import COUNSELOR_SYSTEM_PROMPT
+from persona import get_system_prompt
 
 _RETRY_DELAYS = [1, 2, 3]  # seconds between retries on overload
 
@@ -47,20 +47,34 @@ def _get_anthropic() -> anthropic.AsyncAnthropic:
 
 # ─── Deepgram STT ────────────────────────────────────────────────────────────
 
-async def transcribe_audio(audio_bytes: bytes, mimetype: str = "audio/webm") -> str:
+_STT_CONFIG = {
+    "en": {"model": "nova-2", "language": "en"},
+    "hi": {"model": "nova-2", "language": "hi"},
+    "mr": {"model": "nova-3", "language": "mr"},
+}
+
+_TTS_VOICE = {
+    "en": "en-US-AriaNeural",
+    "hi": "hi-IN-SwaraNeural",
+    "mr": "mr-IN-AarohiNeural",
+}
+
+
+async def transcribe_audio(audio_bytes: bytes, mimetype: str = "audio/webm", language: str = "hi") -> str:
     """
-    Transcribe audio bytes to text using Deepgram nova-2.
+    Transcribe audio bytes to text using Deepgram.
     Returns empty string if no speech detected.
     """
     client = _get_deepgram()
+    cfg = _STT_CONFIG.get(language, _STT_CONFIG["hi"])
 
     loop = asyncio.get_running_loop()
     response = await loop.run_in_executor(
         None,
         lambda: client.listen.v1.media.transcribe_file(
             request=audio_bytes,
-            model="nova-2",
-            language="hi",
+            model=cfg["model"],
+            language=cfg["language"],
             smart_format=True,
             punctuate=True,
         ),
@@ -103,6 +117,7 @@ def _extract_sentences(buffer: str) -> tuple[list[str], str]:
 async def stream_counselor_sentences(
     transcript: str,
     conversation_history: list[dict],
+    language: str = "hi",
 ) -> AsyncGenerator[str, None]:
     """
     Stream Claude's response and yield complete sentences as they form.
@@ -124,7 +139,7 @@ async def stream_counselor_sentences(
             async with client.messages.stream(
                 model="claude-sonnet-4-6",
                 max_tokens=250,
-                system=COUNSELOR_SYSTEM_PROMPT,
+                system=get_system_prompt(language),
                 messages=messages,
                 temperature=0.7,
                 timeout=10.0,
@@ -153,18 +168,13 @@ async def stream_counselor_sentences(
 
 # ─── Edge TTS (free, no API key) ────────────────────────────────────────────
 
-# Hindi voices available in Edge TTS:
-#   hi-IN-SwaraNeural   — female, warm
-#   hi-IN-MadhurNeural  — male, calm
-EDGE_VOICE = "hi-IN-SwaraNeural"  # Female voice for Saraswati
-
-
-async def text_to_speech(text: str) -> bytes:
+async def text_to_speech(text: str, language: str = "hi") -> bytes:
     """
     Convert text to MP3 audio using Edge TTS (Microsoft).
-    Completely free, no API key needed. Supports Hindi natively.
+    Completely free, no API key needed.
     """
-    communicate = edge_tts.Communicate(text, EDGE_VOICE)
+    voice = _TTS_VOICE.get(language, _TTS_VOICE["hi"])
+    communicate = edge_tts.Communicate(text, voice)
     audio_data = b""
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
@@ -178,6 +188,7 @@ async def process_turn_streaming(
     audio_bytes: bytes,
     conversation_history: list[dict],
     mimetype: str = "audio/webm",
+    language: str = "hi",
 ) -> AsyncGenerator[dict, None]:
     """
     Full pipeline for one user turn, yielding events as they happen:
@@ -189,7 +200,7 @@ async def process_turn_streaming(
 
     Raises ValueError if no speech detected.
     """
-    transcript = await transcribe_audio(audio_bytes, mimetype)
+    transcript = await transcribe_audio(audio_bytes, mimetype, language)
     if not transcript:
         raise ValueError("No speech detected in audio")
 
@@ -198,12 +209,12 @@ async def process_turn_streaming(
     full_response = ""
     sentence_index = 0
 
-    async for sentence in stream_counselor_sentences(transcript, conversation_history):
+    async for sentence in stream_counselor_sentences(transcript, conversation_history, language):
         full_response += (" " if full_response else "") + sentence
 
         yield {"event": "sentence_text", "text": sentence, "index": sentence_index}
 
-        audio = await text_to_speech(sentence)
+        audio = await text_to_speech(sentence, language)
         yield {"event": "sentence_audio", "audio": audio, "index": sentence_index}
 
         sentence_index += 1
