@@ -538,8 +538,33 @@ let currentAudio = null;
 let mouthAnimInterval = null;
 let mouthOpen = false;
 
+// iOS audio unlock
+let audioUnlocked = false;
+
 const WS_PROTOCOL = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_URL = `${WS_PROTOCOL}//${location.host}/ws/session`;
+
+// ─── iOS Audio Unlock ────────────────────────────────────────────────────────
+// iOS Safari blocks audio unless triggered by a direct user gesture.
+// We play a silent buffer on first touch to unlock the audio engine.
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const buf = ctx.createBuffer(1, 1, 22050);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start(0);
+  ctx.resume().then(() => ctx.close());
+
+  // Also play a silent Audio element to unlock HTMLAudioElement
+  const sil = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
+  sil.play().catch(() => {});
+}
+
+document.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+document.addEventListener('mousedown',  unlockAudio, { once: true, passive: true });
 
 // ─── UI refs ─────────────────────────────────────────────────────────────────
 const avatarGlow  = document.getElementById('orb-glow');
