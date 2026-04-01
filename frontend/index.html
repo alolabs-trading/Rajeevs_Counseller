@@ -53,13 +53,75 @@
       background: #18181c;
       margin: 0 16px;
       border-radius: 10px;
-      height: 340px;
+      height: 400px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 24px;
       position: relative;
       overflow: hidden;
+    }
+
+    /* ── Virtual mic button ── */
+    .mic-btn {
+      position: relative;
+      width: 200px;
+      height: 52px;
+      border-radius: 26px;
+      border: none;
+      background: #2a2a38;
+      color: #888;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.15s, color 0.15s, box-shadow 0.15s, transform 0.1s;
+      touch-action: none;
+    }
+    .mic-btn .mic-icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      transition: fill 0.15s;
+    }
+    .mic-btn:hover {
+      background: #32323e;
+      color: #aaa;
+    }
+    .mic-btn.recording {
+      background: #3a1a1a;
+      color: #e87070;
+      box-shadow: 0 0 0 3px rgba(226, 91, 91, 0.25), 0 0 20px rgba(226, 91, 91, 0.15);
+      transform: scale(1.03);
+    }
+    .mic-btn.disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    /* Pulse ring while recording */
+    .mic-btn::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 30px;
+      border: 2px solid rgba(226, 91, 91, 0.4);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .mic-btn.recording::after {
+      opacity: 1;
+      animation: mic-ring 1s ease-in-out infinite;
+    }
+    @keyframes mic-ring {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(226, 91, 91, 0.3); }
+      50%       { box-shadow: 0 0 0 8px rgba(226, 91, 91, 0); }
     }
 
     /* ── Avatar ── */
@@ -435,7 +497,18 @@
       <div class="bar"></div><div class="bar"></div><div class="bar"></div>
     </div>
 
-    <div class="orb-hint" id="orb-hint">Hold spacebar to speak</div>
+    <div class="orb-hint" id="orb-hint">Hold button or spacebar to speak</div>
+
+    <!-- Virtual mic button for mobile -->
+    <button class="mic-btn disabled" id="mic-btn" aria-label="Hold to speak">
+      <svg class="mic-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="9" y="2" width="6" height="11" rx="3" fill="currentColor"/>
+        <path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+        <line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <line x1="9" y1="21" x2="15" y2="21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <span id="mic-btn-label">Hold to speak</span>
+    </button>
   </div>
 
   <!-- Buttons -->
@@ -482,6 +555,8 @@ const txAi        = document.getElementById('tx-ai');
 const btnStart    = document.getElementById('btn-start');
 const btnEnd      = document.getElementById('btn-end');
 const timerEl     = document.getElementById('session-timer');
+const micBtn      = document.getElementById('mic-btn');
+const micBtnLabel = document.getElementById('mic-btn-label');
 
 const STATE_LABELS = {
   idle:         'IDLE',
@@ -510,6 +585,22 @@ function setState(state) {
   avatarGlow.className = `avatar-glow ${state}`;
   avatarRing.className = `avatar-ring ${state}`;
   waveform.classList.remove('active');
+
+  // Mic button state
+  const canTalk = state === 'listening';
+  const isSpeaking = state === 'speaking';
+  micBtn.classList.toggle('disabled', !canTalk && !isSpeaking);
+  micBtn.classList.remove('recording');
+  if (isSpeaking) {
+    micBtnLabel.textContent = 'Tap to interrupt';
+    micBtn.style.color = '#6ab0f5';
+  } else if (canTalk) {
+    micBtnLabel.textContent = 'Hold to speak';
+    micBtn.style.color = '';
+  } else {
+    micBtnLabel.textContent = 'Hold to speak';
+    micBtn.style.color = '';
+  }
 
   if (state === 'speaking') {
     startMouthAnimation();
@@ -735,6 +826,33 @@ orbWrapper.addEventListener('touchstart', (e) => {
 orbWrapper.addEventListener('touchend', () => {
   if (isRecording) stopRecordingAndSend();
 });
+
+// ─── Virtual mic button ──────────────────────────────────────────────────────
+function micBtnPress() {
+  if (currentState === 'listening') {
+    startRecording();
+    micBtn.classList.add('recording');
+    micBtnLabel.textContent = 'Release to send';
+  } else if (currentState === 'speaking') {
+    stopAllAudio();
+    if (ws) ws.send(JSON.stringify({ type: 'cancel' }));
+    setState('listening');
+  }
+}
+
+function micBtnRelease() {
+  if (isRecording) {
+    stopRecordingAndSend();
+    micBtn.classList.remove('recording');
+    micBtnLabel.textContent = 'Hold to speak';
+  }
+}
+
+micBtn.addEventListener('mousedown', (e) => { e.preventDefault(); micBtnPress(); });
+micBtn.addEventListener('mouseup',   () => micBtnRelease());
+micBtn.addEventListener('mouseleave',() => { if (isRecording) micBtnRelease(); });
+micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); micBtnPress(); }, { passive: false });
+micBtn.addEventListener('touchend',   (e) => { e.preventDefault(); micBtnRelease(); }, { passive: false });
 
 // Hold spacebar to talk
 document.addEventListener('keydown', (e) => {
