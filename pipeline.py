@@ -21,15 +21,6 @@ import anthropic
 import edge_tts
 from deepgram import DeepgramClient
 from persona import get_system_prompt
-from emotion import detect_context, should_use_premium_tts
-
-# Optional: ElevenLabs for premium TTS (requires ELEVENLABS_API_KEY)
-try:
-    from elevenlabs.client import ElevenLabs
-    _ELEVENLABS_AVAILABLE = True
-except ImportError:
-    _ELEVENLABS_AVAILABLE = False
-    print("Warning: ElevenLabs not installed. Install with: pip install elevenlabs")
 
 _RETRY_DELAYS = [1, 2, 3]  # seconds between retries on overload
 
@@ -38,7 +29,6 @@ _RETRY_DELAYS = [1, 2, 3]  # seconds between retries on overload
 
 _deepgram: DeepgramClient | None = None
 _anthropic: anthropic.AsyncAnthropic | None = None
-_elevenlabs: ElevenLabs | None = None
 
 
 def _get_deepgram() -> DeepgramClient:
@@ -53,20 +43,6 @@ def _get_anthropic() -> anthropic.AsyncAnthropic:
     if _anthropic is None:
         _anthropic = anthropic.AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     return _anthropic
-
-
-def _get_elevenlabs() -> ElevenLabs | None:
-    """Get ElevenLabs client if available and configured."""
-    global _elevenlabs
-    if not _ELEVENLABS_AVAILABLE:
-        return None
-    if _elevenlabs is None:
-        api_key = os.environ.get("ELEVENLABS_API_KEY")
-        if api_key:
-            _elevenlabs = ElevenLabs(api_key=api_key)
-        else:
-            print("Warning: ELEVENLABS_API_KEY not set. Premium TTS disabled.")
-    return _elevenlabs
 
 
 # ─── Deepgram STT ────────────────────────────────────────────────────────────
@@ -206,87 +182,6 @@ async def text_to_speech(text: str, language: str = "hi") -> bytes:
     return audio_data
 
 
-# ─── ElevenLabs TTS (premium, requires API key) ─────────────────────────────
-
-# Voice IDs for different languages (update with your preferred voices)
-_ELEVENLABS_VOICE = {
-    "en": "EXAVITQu4vr4xnSDxMaL",  # Bella (expressive female)
-    "hi": "pNInz6obpgDQGcFmaJgB",  # Adam (multilingual)
-    "mr": "pNInz6obpgDQGcFmaJgB",  # Adam (multilingual)
-}
-
-
-async def elevenlabs_tts(text: str, language: str = "hi") -> bytes:
-    """
-    Convert text to MP3 audio using ElevenLabs premium TTS.
-    Requires ELEVENLABS_API_KEY environment variable.
-    Returns empty bytes if not available.
-    """
-    client = _get_elevenlabs()
-    if not client:
-        # Fallback to Edge TTS if ElevenLabs not available
-        return await text_to_speech(text, language)
-    
-    try:
-        voice_id = _ELEVENLABS_VOICE.get(language, _ELEVENLABS_VOICE["hi"])
-        
-        # Run synchronous ElevenLabs call in executor to avoid blocking
-        loop = asyncio.get_running_loop()
-        audio_generator = await loop.run_in_executor(
-            None,
-            lambda: client.text_to_speech.convert(
-                voice_id=voice_id,
-                model_id="eleven_multilingual_v2",
-                text=text,
-            )
-        )
-        
-        # Collect audio chunks
-        audio_data = b"".join(audio_generator)
-        return audio_data
-        
-    except Exception as e:
-        print(f"ElevenLabs TTS error: {e}, falling back to Edge TTS")
-        return await text_to_speech(text, language)
-
-
-# ─── Hybrid TTS Router ──────────────────────────────────────────────────────
-
-async def adaptive_tts(
-    text: str, 
-    context: dict, 
-    language: str = "hi",
-    add_pause: bool = False
-) -> bytes:
-    """
-    Route TTS request to appropriate engine based on emotional context.
-    
-    Args:
-        text: Text to synthesize
-        context: Emotion detection result from detect_context()
-        language: Language code
-        add_pause: Add slight pause before audio (for premium voice)
-        
-    Returns:
-        Audio bytes (MP3 format)
-    """
-    # Determine if premium TTS should be used
-    use_premium = should_use_premium_tts(context)
-    
-    if use_premium and _get_elevenlabs():
-        # Use premium TTS for emotional/crisis moments
-        audio = await elevenlabs_tts(text, language)
-        
-        # Optional: Add natural pause for emphasis
-        if add_pause:
-            await asyncio.sleep(0.15)
-    else:
-        # Use free Edge TTS for normal conversation
-        audio = await text_to_speech(text, language)
-    
-    return audio
-
-
 # ─── Streaming pipeline ─────────────────────────────────────────────────────
 
 async def process_turn_streaming(
@@ -311,10 +206,6 @@ async def process_turn_streaming(
 
     yield {"event": "transcript", "text": transcript}
 
-    # Detect emotional context from user's input
-    # This determines TTS routing for the entire response
-    context = detect_context(transcript)
-    
     full_response = ""
     sentence_index = 0
 
@@ -323,14 +214,7 @@ async def process_turn_streaming(
 
         yield {"event": "sentence_text", "text": sentence, "index": sentence_index}
 
-        # Use hybrid TTS router based on emotional context
-        audio = await adaptive_tts(
-            text=sentence,
-            context=context,
-            language=language,
-            add_pause=(sentence_index == 0 and should_use_premium_tts(context))
-        )
-        
+        audio = await text_to_speech(sentence, language)
         yield {"event": "sentence_audio", "audio": audio, "index": sentence_index}
 
         sentence_index += 1
