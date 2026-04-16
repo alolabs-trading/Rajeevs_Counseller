@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rajeev's Voice Counsellor</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a1e;
+      color: #e2e2e2;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      background: #242428;
+      border-radius: 16px;
+      width: 680px;
+      max-width: 96vw;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 24px 28px 16px;
+    }
+
+    .header-title { font-size: 18px; font-weight: 500; color: #f0f0f0; }
+    .header-sub   { font-size: 13px; color: #888; margin-top: 4px; }
+
+    .header-meta { text-align: right; }
+    .meta-row    { display: flex; gap: 20px; }
+
+    .meta-label { font-size: 10px; letter-spacing: 0.08em; color: #666; text-transform: uppercase; }
+    .meta-value { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: #e0e0e0; margin-top: 2px; }
+    .meta-value.status-listening { color: #5bc47a; }
+    .meta-value.status-thinking  { color: #f0a742; }
+    .meta-value.status-speaking  { color: #6ab0f5; }
+    .meta-value.status-transcribing { color: #f0a742; }
+    .meta-value.status-error     { color: #e25b5b; }
+
+    /* ── Visualizer area ── */
+    .viz-area {
+      background: #18181c;
+      margin: 0 16px;
+      border-radius: 10px;
+      height: 400px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ── Virtual mic button ── */
+    .mic-btn {
+      position: relative;
+      width: 200px;
+      height: 52px;
+      border-radius: 26px;
+      border: none;
+      background: #2a2a38;
+      color: #888;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.15s, color 0.15s, box-shadow 0.15s, transform 0.1s;
+      touch-action: none;
+    }
+    .mic-btn .mic-icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      transition: fill 0.15s;
+    }
+    .mic-btn:hover {
+      background: #32323e;
+      color: #aaa;
+    }
+    .mic-btn.recording {
+      background: #3a1a1a;
+      color: #e87070;
+      box-shadow: 0 0 0 3px rgba(226, 91, 91, 0.25), 0 0 20px rgba(226, 91, 91, 0.15);
+      transform: scale(1.03);
+    }
+    .mic-btn.disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    /* Pulse ring while recording */
+    .mic-btn::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 30px;
+      border: 2px solid rgba(226, 91, 91, 0.4);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .mic-btn.recording::after {
+      opacity: 1;
+      animation: mic-ring 1s ease-in-out infinite;
+    }
+    @keyframes mic-ring {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(226, 91, 91, 0.3); }
+      50%       { box-shadow: 0 0 0 8px rgba(226, 91, 91, 0); }
+    }
+
+    /* ── Avatar ── */
+    .avatar-wrapper {
+      position: relative;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .avatar-glow {
+      position: absolute;
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(150, 190, 240, 0.10) 0%, transparent 70%);
+      transition: background 0.5s ease;
+      pointer-events: none;
+    }
+
+    .avatar-glow.listening  { background: radial-gradient(circle, rgba(91, 196, 122, 0.18) 0%, transparent 65%); }
+    .avatar-glow.recording  { background: radial-gradient(circle, rgba(226, 91, 91, 0.25) 0%, transparent 65%); }
+    .avatar-glow.speaking   { background: radial-gradient(circle, rgba(106, 176, 245, 0.22) 0%, transparent 65%); }
+    .avatar-glow.thinking   { background: radial-gradient(circle, rgba(240, 167, 66, 0.18) 0%, transparent 65%); }
+
+    .avatar-ring {
+      position: absolute;
+      width: 178px;
+      height: 178px;
+      border-radius: 50%;
+      border: 2.5px solid transparent;
+      transition: border-color 0.4s, box-shadow 0.4s;
+      pointer-events: none;
+    }
+
+    .avatar-ring.listening  {
+      border-color: rgba(91, 196, 122, 0.6);
+      box-shadow: 0 0 16px rgba(91, 196, 122, 0.25), inset 0 0 16px rgba(91, 196, 122, 0.05);
+      animation: ring-breathe 2s ease-in-out infinite;
+    }
+    .avatar-ring.recording  {
+      border-color: rgba(226, 91, 91, 0.8);
+      box-shadow: 0 0 20px rgba(226, 91, 91, 0.4);
+      animation: ring-pulse 0.8s ease-in-out infinite;
+    }
+    .avatar-ring.speaking   {
+      border-color: rgba(106, 176, 245, 0.6);
+      box-shadow: 0 0 16px rgba(106, 176, 245, 0.25);
+      animation: ring-speak 1s ease-in-out infinite;
+    }
+    .avatar-ring.thinking   {
+      border-color: rgba(240, 167, 66, 0.5);
+      box-shadow: 0 0 12px rgba(240, 167, 66, 0.2);
+      animation: ring-think 2s ease-in-out infinite;
+    }
+
+    @keyframes ring-breathe {
+      0%, 100% { box-shadow: 0 0 16px rgba(91, 196, 122, 0.25); }
+      50%       { box-shadow: 0 0 28px rgba(91, 196, 122, 0.45); }
+    }
+    @keyframes ring-pulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(226, 91, 91, 0.4); }
+      50%       { box-shadow: 0 0 32px rgba(226, 91, 91, 0.7); }
+    }
+    @keyframes ring-speak {
+      0%, 100% { box-shadow: 0 0 16px rgba(106, 176, 245, 0.25); }
+      50%       { box-shadow: 0 0 24px rgba(106, 176, 245, 0.5); }
+    }
+    @keyframes ring-think {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.5; }
+    }
+
+    .avatar-svg {
+      width: 168px;
+      height: 168px;
+      border-radius: 50%;
+      filter: drop-shadow(0 8px 24px rgba(0,0,0,0.5));
+      transition: transform 0.15s ease;
+    }
+
+    .avatar-wrapper:hover .avatar-svg { transform: scale(1.02); }
+    .avatar-wrapper:active .avatar-svg { transform: scale(0.98); }
+
+    /* ── Eye blinking CSS animation ── */
+    .eyelid {
+      transform-box: fill-box;
+      transform-origin: top center;
+      animation: blink 4.5s ease-in-out infinite;
+    }
+    .eyelid-right { animation-delay: 0.06s; }
+
+    @keyframes blink {
+      0%, 85%, 100% { transform: scaleY(0); }
+      91%            { transform: scaleY(1); }
+      97%            { transform: scaleY(0); }
+    }
+
+    /* ── Hint text ── */
+    .orb-hint {
+      position: absolute;
+      bottom: 20px;
+      font-size: 13px;
+      color: #555;
+      text-align: center;
+      transition: opacity 0.3s;
+    }
+
+    /* ── Waveform (recording indicator) ── */
+    .waveform {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 36px;
+      position: absolute;
+      bottom: 58px;
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+    .waveform.active { opacity: 1; }
+    .waveform .bar {
+      width: 3px;
+      background: #e25b5b;
+      border-radius: 2px;
+      animation: wave 0.9s ease-in-out infinite;
+    }
+    .waveform .bar:nth-child(1) { animation-delay: 0.0s; }
+    .waveform .bar:nth-child(2) { animation-delay: 0.1s; }
+    .waveform .bar:nth-child(3) { animation-delay: 0.2s; }
+    .waveform .bar:nth-child(4) { animation-delay: 0.3s; }
+    .waveform .bar:nth-child(5) { animation-delay: 0.4s; }
+    .waveform .bar:nth-child(6) { animation-delay: 0.3s; }
+    .waveform .bar:nth-child(7) { animation-delay: 0.2s; }
+    .waveform .bar:nth-child(8) { animation-delay: 0.1s; }
+    .waveform .bar:nth-child(9) { animation-delay: 0.0s; }
+
+    @keyframes wave {
+      0%, 100% { height: 5px; }
+      50%       { height: 24px; }
+    }
+
+    /* ── Transcript ── */
+    .transcript-area {
+      position: absolute;
+      top: 14px;
+      left: 20px;
+      right: 20px;
+      font-size: 13px;
+      line-height: 1.5;
+      max-height: 100px;
+      overflow: hidden;
+    }
+    .transcript-user  { color: #aaa; }
+    .transcript-ai    { color: #b8d0ee; margin-top: 6px; }
+    .transcript-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #555; margin-bottom: 2px; }
+
+    /* ── Aria name label ── */
+    .aria-name {
+      position: absolute;
+      bottom: 44px;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      color: #666;
+      text-transform: uppercase;
+    }
+
+    /* ── Language selector ── */
+    .lang-row {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px 0;
+      justify-content: center;
+    }
+    .lang-btn {
+      flex: 1;
+      padding: 8px 4px;
+      border: 1.5px solid #333;
+      border-radius: 8px;
+      background: transparent;
+      color: #666;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      max-width: 120px;
+    }
+    .lang-btn:hover { border-color: #555; color: #999; }
+    .lang-btn.active {
+      border-color: #6ab0f5;
+      color: #6ab0f5;
+      background: rgba(106, 176, 245, 0.08);
+    }
+
+    /* ── Buttons ── */
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      padding: 16px 16px 20px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      background: #2e2e34;
+      color: #ccc;
+    }
+    .btn:hover    { opacity: 0.85; }
+    .btn:active   { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-start { background: #2e3a4a; color: #a8caee; }
+    .btn-end   { background: #3a2e2e; color: #e4a0a0; }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div class="header-title">Rajeev's Voice Counsellor</div>
+      <div class="header-sub" id="hint-text">Start a session to begin</div>
+    </div>
+    <div class="header-meta">
+      <div class="meta-row">
+        <div>
+          <div class="meta-label">Status</div>
+          <div class="meta-value" id="status-display">IDLE</div>
+        </div>
+        <div>
+          <div class="meta-label">Session time</div>
+          <div class="meta-value" id="session-timer">0s</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Visualizer -->
+  <div class="viz-area">
+
+    <!-- Transcript -->
+    <div class="transcript-area" id="transcript-area" style="display:none">
+      <div>
+        <div class="transcript-label">You</div>
+        <div class="transcript-user" id="tx-user"></div>
+      </div>
+      <div>
+        <div class="transcript-label" style="margin-top:8px">Saraswati</div>
+        <div class="transcript-ai" id="tx-ai"></div>
+      </div>
+    </div>
+
+    <!-- Avatar -->
+    <div class="avatar-wrapper" id="orb-wrapper">
+      <div class="avatar-glow" id="orb-glow"></div>
+      <div class="avatar-ring" id="avatar-ring"></div>
+
+      <!-- Illustrated Indian female face -->
+      <svg class="avatar-svg" id="orb" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="face-clip">
+            <circle cx="100" cy="100" r="98"/>
+          </clipPath>
+          <radialGradient id="skin-grad" cx="45%" cy="38%" r="60%">
+            <stop offset="0%" stop-color="#d9956f"/>
+            <stop offset="100%" stop-color="#bb7450"/>
+          </radialGradient>
+          <radialGradient id="bg-grad" cx="50%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#252535"/>
+            <stop offset="100%" stop-color="#13131a"/>
+          </radialGradient>
+          <linearGradient id="hair-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#1c0c02"/>
+            <stop offset="60%" stop-color="#0e0600"/>
+            <stop offset="100%" stop-color="#2a1408"/>
+          </linearGradient>
+          <linearGradient id="jacket-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#2a2a3a"/>
+            <stop offset="100%" stop-color="#1a1a28"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Background -->
+        <circle cx="100" cy="100" r="98" fill="url(#bg-grad)"/>
+        <!-- Subtle background radiance -->
+        <circle cx="100" cy="80" r="60" fill="rgba(150,120,200,0.04)"/>
+
+        <g clip-path="url(#face-clip)">
+
+          <!-- Hair back (full, open, flowing) -->
+          <ellipse cx="100" cy="68" rx="70" ry="60" fill="url(#hair-grad)"/>
+          <!-- Long flowing hair -->
+          <path d="M30 105 Q15 145 22 200 L50 200 Q45 165 48 140 Q40 122 38 105Z" fill="#0e0600"/>
+          <path d="M170 105 Q185 145 178 200 L150 200 Q155 165 152 140 Q160 122 162 105Z" fill="#0e0600"/>
+          <!-- Hair centre parting highlight -->
+          <path d="M100 28 Q101 50 100 68" stroke="#2e1a08" stroke-width="2" fill="none" opacity="0.6"/>
+          <!-- Subtle hair highlight strand left -->
+          <path d="M65 50 Q55 75 48 110" stroke="#3a1e08" stroke-width="1.5" fill="none" opacity="0.4"/>
+          <!-- Subtle hair highlight strand right -->
+          <path d="M135 50 Q145 75 152 110" stroke="#3a1e08" stroke-width="1.5" fill="none" opacity="0.4"/>
+
+          <!-- Face -->
+          <ellipse cx="100" cy="122" rx="61" ry="73" fill="url(#skin-grad)"/>
+          <!-- Subtle forehead shadow -->
+          <ellipse cx="100" cy="80" rx="48" ry="16" fill="#8a4e2a" opacity="0.12"/>
+
+          <!-- Neck -->
+          <rect x="85" y="187" width="30" height="28" rx="5" fill="#bb7450"/>
+
+          <!-- Modern jacket / dark top -->
+          <rect x="20" y="205" width="160" height="25" fill="url(#jacket-grad)"/>
+          <ellipse cx="100" cy="208" rx="72" ry="18" fill="url(#jacket-grad)"/>
+          <!-- Jacket collar - V-neck modern cut -->
+          <path d="M82 205 Q100 218 118 205" stroke="#3a3a50" stroke-width="1.5" fill="none"/>
+          <!-- Jacket lapel shadow lines -->
+          <path d="M82 205 L75 215" stroke="#14141e" stroke-width="1" opacity="0.5"/>
+          <path d="M118 205 L125 215" stroke="#14141e" stroke-width="1" opacity="0.5"/>
+
+          <!-- Bindi — smaller, more refined -->
+          <circle cx="100" cy="89" r="3" fill="#cc1a35"/>
+          <circle cx="100" cy="89" r="1.8" fill="#ff3355" opacity="0.8"/>
+
+          <!-- Eyebrows — modern, slightly thicker, defined -->
+          <path d="M68 102 Q78 95 91 97" stroke="#140800" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <path d="M109 97 Q122 95 132 102" stroke="#140800" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <!-- Eyebrow fill -->
+          <path d="M69 103 Q79 97 91 99" stroke="#2a1408" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.5"/>
+          <path d="M109 99 Q121 97 131 103" stroke="#2a1408" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.5"/>
+
+          <!-- Left eye -->
+          <ellipse cx="79" cy="112" rx="12.5" ry="8.5" fill="white"/>
+          <circle cx="80" cy="112" r="6.2" fill="#1e0e00"/>
+          <circle cx="80" cy="112" r="3.5" fill="#060200"/>
+          <circle cx="82.5" cy="109.5" r="2" fill="white" opacity="0.9"/>
+          <circle cx="78.5" cy="113.5" r="0.8" fill="white" opacity="0.4"/>
+          <!-- Left eye liner - modern cat flick -->
+          <path d="M67 110 Q79 103 92 110" stroke="#080300" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M91 110 Q94 107 96 108" stroke="#080300" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+          <!-- Right eye -->
+          <ellipse cx="121" cy="112" rx="12.5" ry="8.5" fill="white"/>
+          <circle cx="122" cy="112" r="6.2" fill="#1e0e00"/>
+          <circle cx="122" cy="112" r="3.5" fill="#060200"/>
+          <circle cx="124.5" cy="109.5" r="2" fill="white" opacity="0.9"/>
+          <circle cx="120.5" cy="113.5" r="0.8" fill="white" opacity="0.4"/>
+          <!-- Right eye liner - modern cat flick -->
+          <path d="M108 110 Q120 103 133 110" stroke="#080300" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M109 110 Q106 107 104 108" stroke="#080300" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+          <!-- Eyelids (CSS blink animation) -->
+          <rect class="eyelid" x="67" y="104" width="25" height="16" rx="8" fill="url(#skin-grad)"/>
+          <rect class="eyelid eyelid-right" x="109" y="104" width="25" height="16" rx="8" fill="url(#skin-grad)"/>
+
+          <!-- Nose — refined -->
+          <path d="M97 128 Q100 136 103 128" stroke="#8a4a2a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <ellipse cx="95.5" cy="133" rx="3" ry="2" fill="#8a4a2a" opacity="0.35"/>
+          <ellipse cx="104.5" cy="133" rx="3" ry="2" fill="#8a4a2a" opacity="0.35"/>
+
+          <!-- Lips — modern deeper rose -->
+          <path d="M85 148 Q93 143 100 144 Q107 143 115 148 Q107 152 100 151 Q93 152 85 148Z" fill="#8a2838"/>
+          <path d="M92 144 Q96 141 100 142 Q104 141 108 144" stroke="#6a1828" stroke-width="1" fill="none"/>
+          <path id="lower-lip" d="M85 148 Q100 159 115 148 Q107 164 100 166 Q93 164 85 148Z" fill="#a83848"/>
+          <ellipse cx="100" cy="157" rx="7" ry="2.5" fill="#c05060" opacity="0.3"/>
+          <ellipse id="mouth-gap" cx="100" cy="151" rx="11" ry="0" fill="#2a0810"/>
+
+          <!-- Cheek blush — very subtle -->
+          <ellipse cx="62" cy="132" rx="14" ry="8" fill="#c86858" opacity="0.12"/>
+          <ellipse cx="138" cy="132" rx="14" ry="8" fill="#c86858" opacity="0.12"/>
+
+          <!-- Modern minimal earrings — small gold hoops -->
+          <circle cx="38" cy="122" r="5.5" fill="none" stroke="#c8a832" stroke-width="2"/>
+          <circle cx="38" cy="124" r="2" fill="#c8a832" opacity="0.5"/>
+
+          <circle cx="162" cy="122" r="5.5" fill="none" stroke="#c8a832" stroke-width="2"/>
+          <circle cx="162" cy="124" r="2" fill="#c8a832" opacity="0.5"/>
+
+        </g>
+
+        <!-- Outer ring (subtle) -->
+        <circle cx="100" cy="100" r="97" fill="none" stroke="#ffffff" stroke-width="0.5" opacity="0.05"/>
+      </svg>
+    </div>
+
+    <!-- Aria name -->
+    <div class="aria-name">Saraswati</div>
+
+    <!-- Waveform (recording) -->
+    <div class="waveform" id="waveform">
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    </div>
+
+    <div class="orb-hint" id="orb-hint">Hold button or spacebar to speak</div>
+
+    <!-- Virtual mic button for mobile -->
+    <button class="mic-btn disabled" id="mic-btn" aria-label="Hold to speak">
+      <svg class="mic-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="9" y="2" width="6" height="11" rx="3" fill="currentColor"/>
+        <path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+        <line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <line x1="9" y1="21" x2="15" y2="21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <span id="mic-btn-label">Hold to speak</span>
+    </button>
+  </div>
+
+  <!-- Language selector -->
+  <div class="lang-row">
+    <button class="lang-btn" id="lang-en" onclick="setLanguage('en')">English</button>
+    <button class="lang-btn active" id="lang-hi" onclick="setLanguage('hi')">हिन्दी</button>
+    <button class="lang-btn" id="lang-mr" onclick="setLanguage('mr')">मराठी</button>
+  </div>
+
+  <!-- Buttons -->
+  <div class="btn-row">
+    <button class="btn btn-start" id="btn-start" onclick="startSession()">Start Session</button>
+    <button class="btn btn-end"   id="btn-end"   onclick="endSession()" disabled>End Session</button>
+  </div>
+</div>
+
+<script>
+// ─── State ──────────────────────────────────────────────────────────────────
+let ws = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let sessionActive = false;
+let sessionStartTime = null;
+let timerInterval = null;
+let isRecording = false;
+let currentState = 'idle';
+
+// Audio queue
+let audioQueue = [];
+let isPlayingAudio = false;
+let currentAudio = null;
+
+// Mouth animation
+let mouthAnimInterval = null;
+let mouthOpen = false;
+
+// iOS audio unlock
+let audioUnlocked = false;
+
+const WS_PROTOCOL = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const WS_URL = `${WS_PROTOCOL}//${location.host}/ws/session`;
+
+// ─── iOS Audio Unlock ────────────────────────────────────────────────────────
+// iOS Safari blocks audio unless triggered by a direct user gesture.
+// We play a silent buffer on first touch to unlock the audio engine.
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const buf = ctx.createBuffer(1, 1, 22050);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start(0);
+  ctx.resume().then(() => ctx.close());
+
+  // Also play a silent Audio element to unlock HTMLAudioElement
+  const sil = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
+  sil.play().catch(() => {});
+}
+
+document.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+document.addEventListener('mousedown',  unlockAudio, { once: true, passive: true });
+
+// ─── UI refs ─────────────────────────────────────────────────────────────────
+const avatarGlow  = document.getElementById('orb-glow');
+const avatarRing  = document.getElementById('avatar-ring');
+const mouthGap    = document.getElementById('mouth-gap');
+const waveform    = document.getElementById('waveform');
+const statusEl    = document.getElementById('status-display');
+const hintEl      = document.getElementById('hint-text');
+const orbHint     = document.getElementById('orb-hint');
+const txArea      = document.getElementById('transcript-area');
+const txUser      = document.getElementById('tx-user');
+const txAi        = document.getElementById('tx-ai');
+const btnStart    = document.getElementById('btn-start');
+const btnEnd      = document.getElementById('btn-end');
+const timerEl     = document.getElementById('session-timer');
+const micBtn      = document.getElementById('mic-btn');
+const micBtnLabel = document.getElementById('mic-btn-label');
+
+const STATE_LABELS = {
+  idle:         'IDLE',
+  listening:    'LISTENING',
+  transcribing: 'TRANSCRIBING',
+  thinking:     'THINKING',
+  speaking:     'SPEAKING',
+  error:        'ERROR',
+};
+
+const STATE_HINTS = {
+  idle:         'Start a session to begin',
+  listening:    'Hold spacebar to speak',
+  transcribing: 'Processing your voice...',
+  thinking:     'Saraswati is thinking...',
+  speaking:     'Saraswati is speaking...',
+  error:        'Something went wrong',
+};
+
+function setState(state) {
+  currentState = state;
+  statusEl.className = `meta-value status-${state}`;
+  statusEl.textContent = STATE_LABELS[state] || state.toUpperCase();
+  hintEl.textContent = STATE_HINTS[state] || '';
+
+  avatarGlow.className = `avatar-glow ${state}`;
+  avatarRing.className = `avatar-ring ${state}`;
+  waveform.classList.remove('active');
+
+  // Mic button state
+  const canTalk = state === 'listening';
+  const isSpeaking = state === 'speaking';
+  micBtn.classList.toggle('disabled', !canTalk && !isSpeaking);
+  micBtn.classList.remove('recording');
+  if (isSpeaking) {
+    micBtnLabel.textContent = 'Tap to interrupt';
+    micBtn.style.color = '#6ab0f5';
+  } else if (canTalk) {
+    micBtnLabel.textContent = 'Hold to speak';
+    micBtn.style.color = '';
+  } else {
+    micBtnLabel.textContent = 'Hold to speak';
+    micBtn.style.color = '';
+  }
+
+  if (state === 'speaking') {
+    startMouthAnimation();
+  } else {
+    stopMouthAnimation();
+  }
+}
+
+// ─── Mouth animation ─────────────────────────────────────────────────────────
+function startMouthAnimation() {
+  stopMouthAnimation();
+  // Natural speech rhythm — cycle mouth open/close
+  const rhythms = [120, 180, 100, 200, 150, 130, 170, 90];
+  let i = 0;
+
+  function cycle() {
+    mouthOpen = !mouthOpen;
+    const openAmount = mouthOpen ? (3 + Math.random() * 4) : 0;
+    mouthGap.setAttribute('ry', openAmount.toFixed(1));
+    const delay = rhythms[i % rhythms.length] + Math.random() * 60;
+    i++;
+    mouthAnimInterval = setTimeout(cycle, delay);
+  }
+  cycle();
+}
+
+function stopMouthAnimation() {
+  if (mouthAnimInterval) {
+    clearTimeout(mouthAnimInterval);
+    mouthAnimInterval = null;
+  }
+  mouthOpen = false;
+  mouthGap.setAttribute('ry', '0');
+}
+
+// ─── Audio queue ─────────────────────────────────────────────────────────────
+function enqueueAudio(audioB64) {
+  const byteCharacters = atob(audioB64);
+  const byteArray = new Uint8Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteArray[i] = byteCharacters.charCodeAt(i);
+  }
+  const blob = new Blob([byteArray], { type: 'audio/mpeg' });
+  const url = URL.createObjectURL(blob);
+  audioQueue.push(url);
+  if (!isPlayingAudio) playNextInQueue();
+}
+
+function playNextInQueue() {
+  if (audioQueue.length === 0) {
+    isPlayingAudio = false;
+    currentAudio = null;
+    if (sessionActive && currentState === 'speaking') setState('listening');
+    return;
+  }
+
+  isPlayingAudio = true;
+  const url = audioQueue.shift();
+  currentAudio = new Audio(url);
+
+  currentAudio.onended = () => {
+    URL.revokeObjectURL(url);
+    currentAudio = null;
+    playNextInQueue();
+  };
+  currentAudio.onerror = () => {
+    URL.revokeObjectURL(url);
+    currentAudio = null;
+    playNextInQueue();
+  };
+  currentAudio.play().catch(() => playNextInQueue());
+}
+
+function stopAllAudio() {
+  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+  audioQueue.forEach(url => URL.revokeObjectURL(url));
+  audioQueue = [];
+  isPlayingAudio = false;
+  stopMouthAnimation();
+}
+
+// ─── Timer ───────────────────────────────────────────────────────────────────
+function startTimer() {
+  sessionStartTime = Date.now();
+  timerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    timerEl.textContent = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+  timerEl.textContent = '0s';
+}
+
+// ─── WebSocket ────────────────────────────────────────────────────────────────
+function connectWebSocket() {
+  return new Promise((resolve, reject) => {
+    ws = new WebSocket(WS_URL);
+    ws.onopen = () => { console.log('WS connected'); resolve(); };
+    ws.onerror = (e) => { console.error('WS error', e); reject(new Error('WebSocket connection failed')); };
+    ws.onclose = () => { console.log('WS closed'); if (sessionActive) handleDisconnect(); };
+    ws.onmessage = (event) => { handleServerMessage(JSON.parse(event.data)); };
+  });
+}
+
+function handleServerMessage(msg) {
+  switch (msg.type) {
+    case 'status':
+      if (msg.state === 'listening' && isPlayingAudio) return;
+      setState(msg.state);
+      break;
+    case 'transcript':
+      txUser.textContent = msg.text;
+      txAi.textContent = '';
+      txArea.style.display = 'block';
+      break;
+    case 'sentence_text':
+      txAi.textContent = msg.index === 0 ? msg.text : txAi.textContent + ' ' + msg.text;
+      break;
+    case 'sentence_audio':
+      enqueueAudio(msg.audio);
+      break;
+    case 'response_done':
+      break;
+    case 'error':
+      console.error('Server error:', msg.message);
+      setState('error');
+      hintEl.textContent = msg.message;
+      setTimeout(() => { if (sessionActive) setState('listening'); }, 3000);
+      break;
+  }
+}
+
+function handleDisconnect() {
+  sessionActive = false;
+  stopAllAudio();
+  setState('idle');
+  stopTimer();
+  btnStart.disabled = false;
+  btnEnd.disabled = true;
+  hintEl.textContent = 'Disconnected — click Start to reconnect';
+}
+
+// ─── Recording ────────────────────────────────────────────────────────────────
+async function startRecording() {
+  if (isRecording || currentState !== 'listening') return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.start(100);
+    isRecording = true;
+    waveform.classList.add('active');
+    avatarGlow.className = 'avatar-glow recording';
+    avatarRing.className = 'avatar-ring recording';
+    orbHint.style.display = 'none';
+  } catch (err) {
+    console.error('Mic error:', err);
+    hintEl.textContent = 'Microphone access denied';
+  }
+}
+
+async function stopRecordingAndSend() {
+  if (!isRecording || !mediaRecorder) return;
+  isRecording = false;
+  waveform.classList.remove('active');
+  orbHint.style.display = '';
+
+  return new Promise((resolve) => {
+    mediaRecorder.onstop = async () => {
+      const stream = mediaRecorder.stream;
+      stream.getTracks().forEach(t => t.stop());
+      if (audioChunks.length === 0) { resolve(); return; }
+
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result.split(',')[1];
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'audio_chunk', audio: base64, mimetype: 'audio/webm' }));
+        }
+        resolve();
+      };
+      reader.readAsDataURL(blob);
+    };
+    mediaRecorder.stop();
+  });
+}
+
+// ─── Avatar / Orb interaction ─────────────────────────────────────────────────
+const orbWrapper = document.getElementById('orb-wrapper');
+
+orbWrapper.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  if (sessionActive && currentState === 'listening') {
+    startRecording();
+  } else if (currentState === 'speaking') {
+    stopAllAudio();
+    if (ws) ws.send(JSON.stringify({ type: 'cancel' }));
+    setState('listening');
+  }
+});
+
+orbWrapper.addEventListener('mouseup', () => {
+  if (isRecording) stopRecordingAndSend();
+});
+
+orbWrapper.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (sessionActive && currentState === 'listening') {
+    startRecording();
+  } else if (currentState === 'speaking') {
+    stopAllAudio();
+    if (ws) ws.send(JSON.stringify({ type: 'cancel' }));
+    setState('listening');
+  }
+}, { passive: false });
+
+orbWrapper.addEventListener('touchend', () => {
+  if (isRecording) stopRecordingAndSend();
+});
+
+// ─── Virtual mic button ──────────────────────────────────────────────────────
+function micBtnPress() {
+  if (currentState === 'listening') {
+    startRecording();
+    micBtn.classList.add('recording');
+    micBtnLabel.textContent = 'Release to send';
+  } else if (currentState === 'speaking') {
+    stopAllAudio();
+    if (ws) ws.send(JSON.stringify({ type: 'cancel' }));
+    setState('listening');
+  }
+}
+
+function micBtnRelease() {
+  if (isRecording) {
+    stopRecordingAndSend();
+    micBtn.classList.remove('recording');
+    micBtnLabel.textContent = 'Hold to speak';
+  }
+}
+
+micBtn.addEventListener('mousedown', (e) => { e.preventDefault(); micBtnPress(); });
+micBtn.addEventListener('mouseup',   () => micBtnRelease());
+micBtn.addEventListener('mouseleave',() => { if (isRecording) micBtnRelease(); });
+micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); micBtnPress(); }, { passive: false });
+micBtn.addEventListener('touchend',   (e) => { e.preventDefault(); micBtnRelease(); }, { passive: false });
+
+// Hold spacebar to talk
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && !e.repeat) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    e.preventDefault();
+    if (sessionActive && currentState === 'listening') {
+      startRecording();
+    } else if (currentState === 'speaking') {
+      stopAllAudio();
+      if (ws) ws.send(JSON.stringify({ type: 'cancel' }));
+      setState('listening');
+    }
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'Space') {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    e.preventDefault();
+    if (isRecording) stopRecordingAndSend();
+  }
+});
+
+// ─── Language selector ────────────────────────────────────────────────────────
+let currentLanguage = 'hi';
+
+function setLanguage(lang) {
+  currentLanguage = lang;
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('lang-' + lang).classList.add('active');
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'set_language', language: lang }));
+  }
+}
+
+// ─── Session control ──────────────────────────────────────────────────────────
+async function startSession() {
+  btnStart.disabled = true;
+  try {
+    await connectWebSocket();
+    ws.send(JSON.stringify({ type: 'set_language', language: currentLanguage }));
+    sessionActive = true;
+    startTimer();
+    setState('listening');
+    txArea.style.display = 'none';
+    btnEnd.disabled = false;
+    orbHint.textContent = 'Hold spacebar to speak';
+  } catch (err) {
+    hintEl.textContent = 'Could not connect to backend. Is it running?';
+    btnStart.disabled = false;
+  }
+}
+
+function endSession() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'end_session' }));
+    ws.close();
+  }
+  stopAllAudio();
+  sessionActive = false;
+  setState('idle');
+  stopTimer();
+  btnStart.disabled = false;
+  btnEnd.disabled = true;
+  txArea.style.display = 'none';
+}
+</script>
+</body>
+</html>

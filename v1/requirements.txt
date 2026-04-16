@@ -1,0 +1,20 @@
+# Core dependencies
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-dotenv==1.0.1
+websockets==13.1
+
+# AI/ML APIs
+anthropic==0.39.0
+deepgram-sdk==3.7.2  # V2.0: Uses live streaming API
+
+# TTS
+edge-tts==7.0.0
+elevenlabs==1.13.0  # Optional: for premium TTS
+
+# VAD and audio processing
+numpy==2.0.2  # For VAD energy calculations
+
+# Additional for streaming
+aiofiles==23.2.1
+

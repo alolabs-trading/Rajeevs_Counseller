@@ -1,4 +1,4 @@
-# Zen Voice Counselor — V1.0
+# Zen Voice Counselor — V1
 
 A real-time voice-to-voice counselor app. You speak, it listens, responds as a calm
 empathetic counselor named Aria. No chat box. No keyboard. Just a conversation.
