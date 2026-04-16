@@ -99,6 +99,7 @@ async def websocket_session(websocket: WebSocket):
         while True:
             data = await websocket.receive_json()
             msg_type = data.get("type")
+            print("RAW MESSAGE:", data)	
 
             if msg_type == "set_language":
                 lang = data.get("language", "hi")
