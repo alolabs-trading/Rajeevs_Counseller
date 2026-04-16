@@ -34,7 +34,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from pipeline import process_turn_streaming
+from backend.pipeline import process_turn_streaming
 
 
 # ─── App setup ───────────────────────────────────────────────────────────────

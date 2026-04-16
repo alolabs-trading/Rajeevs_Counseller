@@ -20,7 +20,7 @@ from typing import AsyncGenerator
 import anthropic
 import edge_tts
 from deepgram import DeepgramClient
-from persona import get_system_prompt
+from backend.persona import get_system_prompt
 
 _RETRY_DELAYS = [1, 2, 3]  # seconds between retries on overload
 
